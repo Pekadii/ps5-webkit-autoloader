@@ -324,6 +324,9 @@
     uiLog('WebKit Autoloader by PLK', 'success');
     updateProgress(0, 'Waiting to start...');
 
+    // Initialize stage list UI
+    try { initStageList(); setStage('preflight', 'active'); } catch (e) { }
+
     window.addEventListener('message', function (event) {
       var data = event.data;
       if (!data || data.type !== 'wkal') return;
