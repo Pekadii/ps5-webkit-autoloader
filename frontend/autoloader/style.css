@@ -29,7 +29,11 @@ body {
   color: #4b5563;
   line-height: 1.5;
   text-align: center;
-  z-index: 20;
+  z-index: 9999;
+  /* subtle translucent backdrop to remain readable above the progress bar */
+  background: rgba(3, 7, 18, 0.6);
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
 }
 
 
@@ -251,6 +255,7 @@ main[hidden] {
   border: 1px solid #2c3e5a;
   border-radius: 10px;
   overflow: hidden;
+  z-index: 5; /* keep progress visually below the footer */
 }
 
 #progressBar {

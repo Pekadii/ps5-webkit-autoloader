@@ -210,8 +210,8 @@ def main(argv=None):
                         help="Overrides directory to embed (default: pc-host/overrides).")
     parser.add_argument("--input", default=os.path.join(repo_root(), "pc-host", "host.py"),
                         help="Source host script (default: pc-host/host.py).")
-    parser.add_argument("--output", default=os.path.join(repo_root(), "webkit-autoloader-host.py"),
-                        help="Output script (default: webkit-autoloader-host.py).")
+    parser.add_argument("--output", default=None,
+                        help="Output script (default: webkit-autoloader-host_v<version>.py).")
     parser.add_argument("--payload", default=None,
                         help="ELF to serve as payloads/payload.elf in place of the "
                              "bundled unified-autoloader (default: bundled payload).")
@@ -224,14 +224,17 @@ def main(argv=None):
     frontend_dir = os.path.abspath(args.frontend)
     overrides_dir = os.path.abspath(args.overrides)
     input_path = os.path.abspath(args.input)
-    output_path = os.path.abspath(args.output)
+    output_path = os.path.abspath(args.output) if args.output else None
 
     if not os.path.isdir(frontend_dir):
         sys.exit(f"Error: frontend directory not found: {frontend_dir}")
-    if output_path == input_path:
+    if output_path and output_path == input_path:
         sys.exit("Error: --output must differ from --input.")
 
-    version_info = get_version_info()
+    # Build the host with the release/base version by default.
+    # This prevents the generated .py from being labeled with
+    # "-dev-<timestamp>" when building from a modified working tree.
+    version_info = get_version_info(build_type="stable")
     version = version_info["full"]
     build_time = version_info["build_time"]
     # Allow CLI override so callers can force a stable/base version and build time
@@ -239,6 +242,22 @@ def main(argv=None):
         version = args.version
     if args.build_time:
         build_time = args.build_time
+
+    # If no output was explicitly supplied, include the release version
+    # in the generated host filename.
+    if args.output:
+        # Respect the user-supplied path but ensure the version suffix is present
+        user_out = os.path.abspath(args.output)
+        ver_suffix = f"_v{version}"
+        if ver_suffix not in os.path.basename(user_out):
+            base, ext = os.path.splitext(user_out)
+            # Preserve extension (if any) and insert version suffix before it
+            output_path = f"{base}{ver_suffix}{ext}"
+        else:
+            output_path = user_out
+    else:
+        output_path = os.path.join(repo_root(), f"webkit-autoloader-host_v{version}.py")
+
     zip_data, file_map = build_zip(frontend_dir, overrides_dir, version, build_time,
                                    payload_path=args.payload)
     
