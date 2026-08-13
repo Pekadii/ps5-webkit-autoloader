@@ -119,18 +119,30 @@ def build_zip(frontend_dir, overrides_dir, version, build_time, payload_path=Non
 
 def embed_version(source, version, build_time):
     """Replace the VERSION/BUILD_TIME placeholder blocks with the real values."""
-    if VERSION_PLACEHOLDER not in source:
+    # Replace the VERSION and BUILD_TIME assignments that follow the marker
+    import re
+
+    if VERSION_MARKER not in source:
         sys.exit(
-            "Error: '{}' version placeholder not found in input script. "
+            "Error: '{}' version marker not found in input script. "
             "Rebuild pc-host/host.py first.".format(VERSION_MARKER)
         )
-    if BUILD_TIME_PLACEHOLDER not in source:
+    if BUILD_TIME_MARKER not in source:
         sys.exit(
-            "Error: '{}' build time placeholder not found in input script. "
+            "Error: '{}' build time marker not found in input script. "
             "Rebuild pc-host/host.py first.".format(BUILD_TIME_MARKER)
         )
-    source = source.replace(VERSION_PLACEHOLDER, VERSION_MARKER + f'\nVERSION = "{version}"')
-    return source.replace(BUILD_TIME_PLACEHOLDER, BUILD_TIME_MARKER + f'\nBUILD_TIME = "{build_time}"')
+
+    # Replace whatever 'VERSION = "..."' line follows the marker
+    source = re.sub(r"(# \[\[VERSION_PLACEHOLDER\]\]\n)VERSION = \".*?\"",
+                    lambda m: m.group(1) + f'VERSION = "{version}"',
+                    source, count=1)
+
+    source = re.sub(r"(# \[\[BUILD_TIME_PLACEHOLDER\]\]\n)BUILD_TIME = \".*?\"",
+                    lambda m: m.group(1) + f'BUILD_TIME = "{build_time}"',
+                    source, count=1)
+
+    return source
 
 
 def embed_payload(source, payload_b64):
@@ -203,6 +215,10 @@ def main(argv=None):
     parser.add_argument("--payload", default=None,
                         help="ELF to serve as payloads/payload.elf in place of the "
                              "bundled unified-autoloader (default: bundled payload).")
+    parser.add_argument("--version", default=None,
+                        help="Override the frontend version string to embed (e.g. 0.2.2-b1).")
+    parser.add_argument("--build-time", default=None,
+                        help="Override the build time string to embed (e.g. '2026-08-12 12:34:56 UTC').")
     args = parser.parse_args(argv)
 
     frontend_dir = os.path.abspath(args.frontend)
@@ -218,6 +234,11 @@ def main(argv=None):
     version_info = get_version_info()
     version = version_info["full"]
     build_time = version_info["build_time"]
+    # Allow CLI override so callers can force a stable/base version and build time
+    if args.version:
+        version = args.version
+    if args.build_time:
+        build_time = args.build_time
     zip_data, file_map = build_zip(frontend_dir, overrides_dir, version, build_time,
                                    payload_path=args.payload)
     

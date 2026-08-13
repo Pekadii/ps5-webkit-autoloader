@@ -27,16 +27,12 @@
   var earlyLinesLogged = 0;
   var lastFrameUrl = '';
   var repairCount = 0;
+  var MIRROR_INTERVAL_MS = 150; // poll interval for mirroring slopkit logs
   
   var STAGE_NAMES = [
     'Preflight',
     'Prepare',
-    'Stage0',
-    'Stage1',
-    'Stage2',
-    'Stage3',
-    'Stage4',
-    'Stage5',
+    'Ladder',
     'Autoload',
     'Finished'
   ];
@@ -111,6 +107,8 @@
       uiLog(message, 'info');
     }
   }
+
+    // (backfilling removed) short-lived helper removed — ladder is updated directly
 
   window.uiLog = uiLog;
   window.updateProgress = updateProgress;
@@ -238,12 +236,72 @@
          milestone marks (STAGE / POOPS / LATCH / OFFSETS / ...), and
          anything that looks like a failure — never the full raw stream
          (that floods the UI and hides the actual result). */
+      var loggedAs = 'info';
+      if (/FAIL|ERROR|REFUSED|REBOOT|failed|panic|exception/i.test(line)
+        || /^\[-\]/.test(line)) {
+        loggedAs = 'error';
+      }
+
       if (/^>/.test(line) || /^\[\+\]/.test(line)
         || /^(STAGE[0-5]|ALLPROC-CHECK|ALIASES-REPAIRED|POOPS-COMPLETE|POOPS-VERDICT|LATCH-HELD|LATCH-READ|OFFSETS-READY|WEBKIT-BASE|MODULE-BASES|SOCKETS|SPAWN|WAKEGATE)/.test(line)) {
-        uiLog('[log] ' + line, 'info');
-      } else if (/FAIL|ERROR|REFUSED|REBOOT|failed|panic|exception/i.test(line)
-        || /^\[-\]/.test(line)) {
-        uiLog('[log] ' + line, 'error');
+        uiLog('[log] ' + line, loggedAs);
+      } else {
+        // still log errors/warnings that don't match the above set
+        if (loggedAs === 'error') uiLog('[log] ' + line, 'error');
+      }
+
+      // Deterministic stage wiring: inspect individual log lines and map
+      // them to our visible stages so the checklist follows the real flow.
+      // Preflight/prepare
+      if (/^>\s*ps0_preflight\b/i.test(line)) {
+        setStage('preflight', 'success');
+        setStage('prepare', 'active');
+      } else if (/^>\s*ps1_prepare\b/i.test(line) || /prepare\(/i.test(line)) {
+        setStage('prepare', 'success');
+        setStage('ladder', 'active');
+      }
+
+      // STAGEX-OK markers (explicit success marks produced by slopkit)
+      if (/STAGE0-?OK/i.test(line) || /stage0-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE1-?OK/i.test(line) || /stage1-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE2-?OK/i.test(line) || /stage2-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE3-?OK/i.test(line) || /stage3-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE4-?OK/i.test(line) || /stage4-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE5-?OK/i.test(line) || /stage5-?ok/i.test(line)) {
+        setStage('ladder', 'success');
+        setStage('autoload', 'active');
+      }
+
+      // ELF loader / autoload lines
+      if (/\[stage\]\s*autoloading\b/i.test(line) || /autoloading payload\.elf/i.test(line)) {
+        setStage('ladder', 'active');
+        setStage('autoload', 'active');
+      }
+      if (/\[stage\]\s*autoloaded\b/i.test(line) || /autoloaded payload\.elf/i.test(line)
+        || /Payload loaded \(\d+ bytes sent to elfldr\)/i.test(line)) {
+        setStage('ladder', 'success');
+        setStage('autoload', 'success');
+        setStage('finished', 'success');
+      }
+
+      // Failures that explicitly reference stages
+      if (/\[stage\].*failed/i.test(line) || /FAIL|failed/i.test(line)) {
+        // if it mentions autoload, mark autoload failure, otherwise mark finished
+        if (/autoload/i.test(line)) {
+          setStage('autoload', 'error');
+        } else {
+          setStage('finished', 'error');
+        }
       }
     }
 
@@ -266,31 +324,26 @@
         setStage('prepare', 'active');
       } else if (/prepare\(|prepare:|module bases|ps1_prepare/i.test(s)) {
         setStage('prepare', 'success');
-        setStage('stage0', 'active');
+        setStage('ladder', 'active');
       } else if (/waiting for placement|exploit attempt|placement/i.test(s)) {
-        // placement and exploit attempts relate to stage0
-        setStage('stage0', 'active');
+        // placement and exploit attempts relate to the ladder
+        setStage('ladder', 'active');
       } else if (/stage0|stage0-ok|stAGE0-OK|ps3_stage0/i.test(s)) {
-        setStage('stage0', 'success');
-        setStage('stage1', 'active');
+        setStage('ladder', 'active');
       } else if (/stage1|stage1-ok|ps5_stage1|running the ladder/i.test(s)) {
-        setStage('stage1', 'success');
-        setStage('stage2', 'active');
+        setStage('ladder', 'active');
       } else if (/stage2|stage2-ok|ps6_stage2/i.test(s)) {
-        setStage('stage2', 'success');
-        setStage('stage3', 'active');
+        setStage('ladder', 'active');
       } else if (/stage3|stage3-ok|ps8_stage3/i.test(s)) {
-        setStage('stage3', 'success');
-        setStage('stage4', 'active');
+        setStage('ladder', 'active');
       } else if (/stage4|stage4-ok|ps9_stage4/i.test(s)) {
-        setStage('stage4', 'success');
-        setStage('stage5', 'active');
+        setStage('ladder', 'active');
       } else if (/stage5|stage5-ok|ps10_stage5/i.test(s)) {
-        setStage('stage5', 'success');
+        setStage('ladder', 'success');
         setStage('autoload', 'active');
       } else if (/elf loader ready/i.test(s)) {
         // ELF loader ready means payload menu/loader available
-        setStage('stage5', 'success');
+        setStage('ladder', 'success');
         setStage('autoload', 'active');
       } else if (/autoloading/i.test(s)) {
         setStage('autoload', 'active');
@@ -351,21 +404,117 @@
       if (!data || data.type !== 'wkal') return;
       if (data.kind === 'autoload') {
         onAutoloadResult(data);
+        return;
+      }
+      // Bridge messages from slopkit iframe: immediate log and stage events
+      if (data.kind === 'log' || data.kind === 'early') {
+        var line = (data.data && data.data.line) || '';
+        if (line) processLogLine(line);
+        return;
+      }
+      if (data.kind === 'stage') {
+        var st = data.data && data.data.text || '';
+        var cls = data.data && data.data.cls || '';
+        processStageText(st, cls);
+        return;
       }
     });
+
+    function processLogLine(line) {
+      // mirror the curated logic from mirrorSlopkit's per-line handler
+      if (!line) return;
+      var loggedAs = 'info';
+      if (/FAIL|ERROR|REFUSED|REBOOT|failed|panic|exception/i.test(line)
+        || /^\[-\]/.test(line)) {
+        loggedAs = 'error';
+      }
+      if (/^>/.test(line) || /^\[\+\]/.test(line)
+        || /^(STAGE[0-5]|ALLPROC-CHECK|ALIASES-REPAIRED|POOPS-COMPLETE|POOPS-VERDICT|LATCH-HELD|LATCH-READ|OFFSETS-READY|WEBKIT-BASE|MODULE-BASES|SOCKETS|SPAWN|WAKEGATE)/.test(line)) {
+        uiLog('[log] ' + line, loggedAs);
+      } else {
+        if (loggedAs === 'error') uiLog('[log] ' + line, 'error');
+      }
+
+      // also reuse deterministic stage markers from per-line logic
+      if (/^>\s*ps0_preflight\b/i.test(line)) {
+        setStage('preflight', 'success');
+        setStage('prepare', 'active');
+      } else if (/^>\s*ps1_prepare\b/i.test(line) || /prepare\(/i.test(line)) {
+        setStage('prepare', 'success');
+        setStage('ladder', 'active');
+      }
+      if (/STAGE0-?OK/i.test(line) || /stage0-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE1-?OK/i.test(line) || /stage1-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE2-?OK/i.test(line) || /stage2-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE3-?OK/i.test(line) || /stage3-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE4-?OK/i.test(line) || /stage4-?ok/i.test(line)) {
+        setStage('ladder', 'active');
+      }
+      if (/STAGE5-?OK/i.test(line) || /stage5-?ok/i.test(line)) {
+        setStage('ladder', 'success'); setStage('autoload', 'active');
+      }
+      if (/\[stage\]\s*autoloading\b/i.test(line) || /autoloading payload\.elf/i.test(line)) {
+        setStage('ladder', 'active'); setStage('autoload', 'active');
+      }
+      if (/\[stage\]\s*autoloaded\b/i.test(line) || /autoloaded payload\.elf/i.test(line)
+        || /Payload loaded \(\d+ bytes sent to elfldr\)/i.test(line)) {
+        setStage('ladder', 'success'); setStage('autoload', 'success'); setStage('finished', 'success');
+      }
+      if (/\[stage\].*failed/i.test(line) || /FAIL|failed/i.test(line)) {
+        if (/autoload/i.test(line)) setStage('autoload', 'error'); else setStage('finished', 'error');
+      }
+    }
+
+    function processStageText(stText, cls) {
+      lastStageText = stText || lastStageText;
+      lastStageCls = cls || lastStageCls;
+      progressLabel.textContent = lastStageText;
+      var s = String(lastStageText).toLowerCase();
+      if (/success|success --|success \(/i.test(s)) { setStage('finished', 'success'); }
+      if (/failed|failed --|reboot required|failed\b/i.test(s)) { setStage('finished', 'error'); }
+      if (/preflight/i.test(s)) { setStage('preflight', 'success'); setStage('prepare', 'active'); }
+      else if (/prepare\(|prepare:|module bases|ps1_prepare/i.test(s)) { setStage('prepare', 'success'); setStage('ladder', 'active'); }
+      else if (/waiting for placement|exploit attempt|placement/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage0|stage0-ok|ps3_stage0/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage1|stage1-ok|ps5_stage1|running the ladder/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage2|stage2-ok|ps6_stage2/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage3|stage3-ok|ps8_stage3/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage4|stage4-ok|ps9_stage4/i.test(s)) { setStage('ladder', 'active'); }
+      else if (/stage5|stage5-ok|ps10_stage5/i.test(s)) { setStage('ladder', 'success'); setStage('autoload', 'active'); }
+      else if (/elf loader ready/i.test(s)) { setStage('ladder', 'success'); setStage('autoload', 'active'); }
+      else if (/autoloading/i.test(s)) { setStage('autoload', 'active'); }
+      else if (/autoloaded/i.test(s)) { setStage('autoload', 'success'); setStage('finished', 'success'); }
+      if (lastStageCls && lastStageCls.indexOf('bad') !== -1) uiLog('[stage] ' + lastStageText, 'error');
+      else if (lastStageCls && lastStageCls.indexOf('ok') !== -1) uiLog('[stage] ' + lastStageText, 'success');
+      else uiLog('[stage] ' + lastStageText, 'info');
+    }
 
     /* No iframe 'load' listener: its mirroredLines reset re-streamed the
        whole screen mid-run (doubling the log), and the other state resets
        are already handled by the URL-diff branch in mirrorSlopkit() plus
        the shrink re-anchor (fresh documents start with an empty screen,
        so their lines stream normally). */
-    setInterval(mirrorSlopkit, 500);
+    setInterval(mirrorSlopkit, MIRROR_INTERVAL_MS);
 
     chainStarted = true;
     clearSlopkitState();
     try {
       exploitEl.src = EXPLOIT_URL;
     } catch (e) { }
+
+    // Try to pick up initial logs immediately — slopkit can progress faster
+    // than a 500ms poll, so call the mirror a few times shortly after arming.
+    try { mirrorSlopkit(); } catch (e) { }
+    setTimeout(function () { try { mirrorSlopkit(); } catch (e) { } }, 100);
+    setTimeout(function () { try { mirrorSlopkit(); } catch (e) { } }, 300);
 
     setTimeout(function () {
       revealExploit();

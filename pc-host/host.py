@@ -51,10 +51,10 @@ DEFAULT_TTL = 300
 APP_NAME = "ps5-webkit-autoloader PC host"
 
 # [[VERSION_PLACEHOLDER]]
-VERSION = "dev"
+VERSION = "0.2.2-b1"
 
 # [[BUILD_TIME_PLACEHOLDER]]
-BUILD_TIME = "dev"
+BUILD_TIME = "2026-08-12 02:42:00 UTC"
 
 # ANSI colors (enabled only when output is a real terminal)
 def _init_console():
