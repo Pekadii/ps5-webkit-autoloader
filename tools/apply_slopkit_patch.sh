@@ -59,17 +59,24 @@ if git apply --check "$PATCH" 2>/dev/null; then
 elif git apply --reverse --check "$PATCH" 2>/dev/null; then
     echo "slopkit: autoloader patch is already applied."
 else
-    echo "Error: patch does not apply cleanly to $DEST."
-    echo "slopkit has likely changed upstream — regenerate tools/slopkit-autoload.patch:"
-    echo "  git -C $SOURCE diff > $PATCH"
-    exit 1
+    echo "Warning: patch does not apply cleanly to $DEST. Proceeding without applying the patch."
+    echo "If the resulting frontend is missing integration markers, regenerate or fix tools/slopkit-autoload.patch:" \
+         "git -C $SOURCE diff > $PATCH"
 fi
 
 # 4. Sanity check: the patched page must carry our integration markers and the
-#    big cat gif must be gone. Catches a silently truncated/empty patch.
-if ! grep -q 'autoload: Q.get("autoload")' slopkit/poops.html \
-    || ! grep -q 'PAYLOAD_MAX_SIZE = 0x400000' slopkit/poops.html \
-    || [ -f slopkit/mmhmm-cats-ps5.gif ]; then
+#    big cat gif must be gone. Accept either a top-level poops.html (old layout)
+#    or a slopkit/poops.html (expected layout).
+POOPS_PATH=""
+if [ -f slopkit/poops.html ]; then
+    POOPS_PATH="slopkit/poops.html"
+elif [ -f poops.html ]; then
+    POOPS_PATH="poops.html"
+fi
+
+if [ -z "$POOPS_PATH" ] || ! grep -q 'autoload: Q.get("autoload")' "$POOPS_PATH" \
+    || ! grep -q 'PAYLOAD_MAX_SIZE = 0x400000' "$POOPS_PATH" \
+    || [ -f slopkit/mmhmm-cats-ps5.gif ] || [ -f mmhmm-cats-ps5.gif ]; then
     echo "Error: slopkit patch verification FAILED — integration markers missing."
     echo "tools/slopkit-autoload.patch is incomplete or out of date."
     echo "Regenerate it from the pristine submodule:"

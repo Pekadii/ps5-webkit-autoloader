@@ -154,6 +154,64 @@ main[hidden] {
   padding: 1rem 1.25rem;
 }
 
+/* Content layout: stage panel + log */
+#content {
+  display: flex;
+  gap: 1rem;
+  width: 82%;
+  max-width: 1220px;
+  align-items: flex-start;
+}
+
+#stagePanel {
+  width: 20%;
+  min-width: 200px;
+  background: #071026;
+  border: 1px solid #163a54;
+  border-radius: 10px;
+  padding: 1rem;
+  font-family: system-ui, -apple-system, Helvetica, Arial, sans-serif;
+}
+
+#stagePanel h2 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: #9fb1c3;
+}
+
+#stageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#stageList li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.25rem;
+  border-radius: 6px;
+  color: #9fb1c3;
+  font-size: 0.95rem;
+}
+
+#stageList li .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #334155;
+  flex: 0 0 12px;
+}
+
+#stageList li.success { color: #7df966; }
+#stageList li.success .dot { background: #16a34a; }
+
+#stageList li.active { color: #38bdf8; }
+#stageList li.active .dot { background: #2563eb; }
+
+#stageList li.error { color: #f87171; }
+#stageList li.error .dot { background: #b91c1c; }
+
 #logContainer {
   color: #94a3b8;
   overflow-wrap: break-word;

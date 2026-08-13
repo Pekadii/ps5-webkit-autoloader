@@ -27,6 +27,21 @@
   var earlyLinesLogged = 0;
   var lastFrameUrl = '';
   var repairCount = 0;
+  
+  var STAGE_NAMES = [
+    'Preflight',
+    'Prepare',
+    'Stage0',
+    'Stage1',
+    'Stage2',
+    'Stage3',
+    'Stage4',
+    'Stage5',
+    'Autoload',
+    'Finished'
+  ];
+
+  var stageElements = {};
 
   /* slopkit keeps its one-shot latch and its "stopped at …" marker in
      sessionStorage. On the PS5 browser the shortcut session can outlive a
@@ -60,6 +75,35 @@
     logContainer.parentNode.scrollTop = logContainer.parentNode.scrollHeight;
   }
 
+  function initStageList() {
+    var list = document.getElementById('stageList');
+    if (!list) return;
+    list.innerHTML = '';
+    STAGE_NAMES.forEach(function (name) {
+      var li = document.createElement('li');
+      li.id = 'stage-' + name.toLowerCase();
+      var dot = document.createElement('span');
+      dot.className = 'dot';
+      li.appendChild(dot);
+      var txt = document.createElement('span');
+      txt.textContent = name;
+      li.appendChild(txt);
+      list.appendChild(li);
+      stageElements[name.toLowerCase()] = li;
+    });
+  }
+
+  function setStage(name, status) {
+    if (!name) return;
+    var key = name.toLowerCase();
+    var el = stageElements[key];
+    if (!el) return;
+    el.classList.remove('active', 'success', 'error');
+    if (status === 'active') el.classList.add('active');
+    if (status === 'success') el.classList.add('success');
+    if (status === 'error') el.classList.add('error');
+  }
+
   function updateProgress(percent, message) {
     progressBar.style.transform = 'scaleX(' + percent / 100 + ')';
     if (message) {
@@ -85,9 +129,13 @@
     if (data.ok) {
       uiLog('Payload loaded (' + data.bytes + ' bytes sent to elfldr).', 'success');
       updateProgress(100, 'Autoload finished.');
+      setStage('autoload', 'success');
+      setStage('finished', 'success');
     } else {
       uiLog('[ERROR] Autoload failed: ' + (data.why || 'unknown error'), 'error');
       updateProgress(0, 'Autoload failed.');
+      setStage('autoload', 'error');
+      setStage('finished', 'error');
     }
     setTimeout(function () {
       if (data.ok) {
@@ -204,6 +252,33 @@
       lastStageText = stage.textContent;
       lastStageCls = stage.className || '';
       progressLabel.textContent = lastStageText;
+      // Map common slopkit stage text to our stage list names
+      var s = lastStageText.toLowerCase();
+      if (/preflight/i.test(s)) {
+        setStage('preflight', 'success');
+        setStage('prepare', 'active');
+      } else if (/prepare/i.test(s) || /ps1_prepare/i.test(s)) {
+        setStage('prepare', 'success');
+        setStage('stage0', 'active');
+      } else if (/stage0|ps3_stage0/i.test(s)) {
+        setStage('stage0', 'success');
+        setStage('stage1', 'active');
+      } else if (/stage1|ps5_stage1/i.test(s)) {
+        setStage('stage1', 'success');
+        setStage('stage2', 'active');
+      } else if (/stage2|ps6_stage2/i.test(s)) {
+        setStage('stage2', 'success');
+        setStage('stage3', 'active');
+      } else if (/stage3|ps8_stage3/i.test(s)) {
+        setStage('stage3', 'success');
+        setStage('stage4', 'active');
+      } else if (/stage4|ps9_stage4/i.test(s)) {
+        setStage('stage4', 'success');
+        setStage('stage5', 'active');
+      } else if (/stage5|ps10_stage5/i.test(s)) {
+        setStage('stage5', 'success');
+        setStage('autoload', 'active');
+      }
       if (lastStageCls.indexOf('bad') !== -1) {
         uiLog('[stage] ' + lastStageText, 'error');
       } else if (lastStageCls.indexOf('ok') !== -1) {
