@@ -252,32 +252,51 @@
       lastStageText = stage.textContent;
       lastStageCls = stage.className || '';
       progressLabel.textContent = lastStageText;
-      // Map common slopkit stage text to our stage list names
+      // Map common slopkit stage text to our stage list names (more robust)
       var s = lastStageText.toLowerCase();
+      if (/success|success --|success \(/i.test(s)) {
+        // overall success -> mark finished
+        setStage('finished', 'success');
+      }
+      if (/failed|failed --|reboot required|failed\b/i.test(s)) {
+        setStage('finished', 'error');
+      }
       if (/preflight/i.test(s)) {
         setStage('preflight', 'success');
         setStage('prepare', 'active');
-      } else if (/prepare/i.test(s) || /ps1_prepare/i.test(s)) {
+      } else if (/prepare\(|prepare:|module bases|ps1_prepare/i.test(s)) {
         setStage('prepare', 'success');
         setStage('stage0', 'active');
-      } else if (/stage0|ps3_stage0/i.test(s)) {
+      } else if (/waiting for placement|exploit attempt|placement/i.test(s)) {
+        // placement and exploit attempts relate to stage0
+        setStage('stage0', 'active');
+      } else if (/stage0|stage0-ok|stAGE0-OK|ps3_stage0/i.test(s)) {
         setStage('stage0', 'success');
         setStage('stage1', 'active');
-      } else if (/stage1|ps5_stage1/i.test(s)) {
+      } else if (/stage1|stage1-ok|ps5_stage1|running the ladder/i.test(s)) {
         setStage('stage1', 'success');
         setStage('stage2', 'active');
-      } else if (/stage2|ps6_stage2/i.test(s)) {
+      } else if (/stage2|stage2-ok|ps6_stage2/i.test(s)) {
         setStage('stage2', 'success');
         setStage('stage3', 'active');
-      } else if (/stage3|ps8_stage3/i.test(s)) {
+      } else if (/stage3|stage3-ok|ps8_stage3/i.test(s)) {
         setStage('stage3', 'success');
         setStage('stage4', 'active');
-      } else if (/stage4|ps9_stage4/i.test(s)) {
+      } else if (/stage4|stage4-ok|ps9_stage4/i.test(s)) {
         setStage('stage4', 'success');
         setStage('stage5', 'active');
-      } else if (/stage5|ps10_stage5/i.test(s)) {
+      } else if (/stage5|stage5-ok|ps10_stage5/i.test(s)) {
         setStage('stage5', 'success');
         setStage('autoload', 'active');
+      } else if (/elf loader ready/i.test(s)) {
+        // ELF loader ready means payload menu/loader available
+        setStage('stage5', 'success');
+        setStage('autoload', 'active');
+      } else if (/autoloading/i.test(s)) {
+        setStage('autoload', 'active');
+      } else if (/autoloaded/i.test(s)) {
+        setStage('autoload', 'success');
+        setStage('finished', 'success');
       }
       if (lastStageCls.indexOf('bad') !== -1) {
         uiLog('[stage] ' + lastStageText, 'error');
