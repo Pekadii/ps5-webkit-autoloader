@@ -1,8 +1,16 @@
 diff --git a/slopkit/poops.html b/slopkit/poops.html
-index df80712..55734ad 100644
+index eb01cd3..3dea60c 100644
 --- a/slopkit/poops.html
 +++ b/slopkit/poops.html
-@@ -535,6 +535,7 @@ const DEFAULT_ATTEMPTS = TRIGGER === "overflow" ? 96
+@@ -209,6 +209,7 @@
+     <a class="payloadTile" href="#" data-name="websrv-ps5.elf" data-key="web"><img data-src="../ui/payload-web-default.png" alt=""></a>
+     <a class="payloadTile" href="#" data-name="kstuff.elf" data-key="kstuff"><img data-src="../ui/payload-kstuff-default.png" alt="KStuff"></a>
+     <a class="payloadTile" href="#" data-name="PLK.elf" data-key="plk"><img data-src="../ui/payload-plk-default.png" alt="PLK PLD Manager"></a>
++    <a class="payloadTile" href="#" data-name="payload.elf" data-key="payload" hidden><img data-src="../ui/payload-payload-default.png" alt="WKAL payload"></a>
+   </div>
+ </div>
+ <div id="nav"></div>
+@@ -353,6 +354,7 @@ const DEFAULT_ATTEMPTS = TRIGGER === "overflow" ? 96
  const cfg = {
  
      payload: Q.get("payload") || "",
@@ -10,7 +18,7 @@ index df80712..55734ad 100644
      trigger: TRIGGER,
      burn: BURN,
      netprobe: Q.get("netprobe") === "1",
-@@ -595,6 +596,7 @@ function exactQuery(expected) {
+@@ -404,6 +406,7 @@ function exactQuery(expected) {
      const keys = Object.keys(expected);
      let count = 0, exact = true;
      Q.forEach((value, key) => {
@@ -18,35 +26,18 @@ index df80712..55734ad 100644
          count++;
          if (!Object.prototype.hasOwnProperty.call(expected, key)
              || expected[key] !== value) exact = false;
-@@ -986,7 +988,9 @@ const PAYLOADS = Object.freeze([
-     { title: "PLK Manager", description: "Payload management tools.",
-         name: "PLK.elf", info: "PLK.elf - PLK" },
-     { title: "ShadowMountPlus", description: "Mount and manage game images.",
--        name: "shadowmountplus.elf", info: "shadowmountplus.elf - Drakmor" }
-+        name: "shadowmountplus.elf", info: "shadowmountplus.elf - Drakmor" },
-+    { title: "WKAL autoload", description: "", name: "payload.elf",
-+        info: "payload.elf", hidden: true }
- ]);
- 
- function populatePayloadButtons() {
-@@ -1019,6 +1023,7 @@ function populatePayloadButtons() {
-         button.appendChild(title);
-         button.appendChild(description);
-         button.appendChild(info);
-+        if (payload.hidden) button.style.display = "none";
-         button.addEventListener("click", function (event) {
-             if (event && event.preventDefault) event.preventDefault();
-             sendPayloadInPlace(payload.name, button);
-@@ -1238,7 +1243,7 @@ function preparePayloadSender() {
-     }
+@@ -841,6 +844,10 @@ function preparePayloadSender() {
  }
  
--async function sendPayloadToElfldr(name) {
-+async function sendPayloadToElfldr(name, base) {
+ async function sendPayloadToElfldr(name) {
++    return sendPayloadToElfldrWithBase(name, "../payloads/");
++}
++
++async function sendPayloadToElfldrWithBase(name, base) {
      if (!elfldrSpawned)
          throw new Error("ELF loader is not ready");
      if (!P || !chain)
-@@ -1250,7 +1255,7 @@ async function sendPayloadToElfldr(name) {
+@@ -852,7 +859,7 @@ async function sendPayloadToElfldr(name) {
      if (!payloadIsListed(name))
          throw new Error("payload is not listed in this menu");
  
@@ -55,39 +46,72 @@ index df80712..55734ad 100644
          { cache: "no-store" });
      if (!response.ok)
          throw new Error("payload fetch failed: HTTP " + response.status);
-@@ -2189,6 +2194,20 @@ async function runLadder() {
+@@ -1470,7 +1477,7 @@ async function runLadder() {
+     LADDER = buildLadder(X, engine);
+ 
+     let passed = 0, failed = 0, skipped = 0, filtered = 0;
+-    let started = false, aborted = "";
++    let started = false, aborted = "", failureDetail = "";
+ 
+     for (let i = 0; i < LADDER.length; ++i)
+         row(i + 1, LADDER[i], "SKIP", "queued");
+@@ -1531,7 +1538,10 @@ async function runLadder() {
+         }
+         if (result.status === "PASS") passed++;
+         else if (result.status === "SKIP") skipped++;
+-        else failed++;
++        else {
++            failed++;
++            failureDetail = String(result.detail || "stage failed").slice(0, 320);
++        }
+         row(i + 1, entry, result.status, result.detail, currentNotes);
+         flushMark("TEST", entry.key + "-" + result.status
+             + (result.detail
+@@ -1760,7 +1770,8 @@ async function runLadder() {
+     else if (fullSuccess)
+         stage("SUCCESS -- " + passed + " PASS / 0 FAIL", "ok");
+     else if (mustReboot)
+-        stage("reboot required -- " + passed + " PASS / " + failed + " FAIL", "bad");
++        stage("reboot required -- " + passed + " PASS / " + failed + " FAIL"
++            + (failureDetail ? ": " + failureDetail : ""), "bad");
+     else if (failed || aborted)
+         stage("FAILED -- " + passed + " PASS / " + failed + " FAIL", "bad");
+     else
+@@ -1771,6 +1782,22 @@ async function runLadder() {
          flushMark("ELFLDR-MENU-INPAGE",
              "no-navigation-parked-racers-and-fds-remain-owned-port=9021");
-         if (!payloadMenuEl.classList.contains("on")) showPayloadMenu();
+         showPayloadMenu();
 +        if (cfg.autoload) {
 +            stage("autoloading " + cfg.autoload + " in 4 s", "ok");
 +            setTimeout(function () {
-+                sendPayloadToElfldr(cfg.autoload, "../../payloads/").then(function (r) {
-+                    flushMark("AUTOLOAD-OK", "name=" + cfg.autoload + "-bytes=" + r.bytes);
-+                    stage("autoloaded " + cfg.autoload + " (" + r.bytes + " bytes)", "ok");
-+                    try { window.parent.postMessage({ type: "wkal", kind: "autoload", ok: true, bytes: r.bytes }, "*"); } catch (e) { }
-+                }).catch(function (err) {
-+                    flushMark("AUTOLOAD-FAILED", "why=" + clean(err && err.message ? err.message : err));
-+                    stage("autoload failed: " + (err && err.message ? err.message : err), "bad");
-+                    try { window.parent.postMessage({ type: "wkal", kind: "autoload", ok: false, why: String(err && err.message || err) }, "*"); } catch (e) { }
-+                });
++                sendPayloadToElfldrWithBase(cfg.autoload, "../../payloads/")
++                    .then(function (r) {
++                        flushMark("AUTOLOAD-OK", "name=" + cfg.autoload + "-bytes=" + r.bytes);
++                        stage("autoloaded " + cfg.autoload + " (" + r.bytes + " bytes)", "ok");
++                        try { window.parent.postMessage({ type: "wkal", kind: "autoload", ok: true, bytes: r.bytes }, "*"); } catch (e) { }
++                    })
++                    .catch(function (err) {
++                        flushMark("AUTOLOAD-FAILED", "why=" + clean(err && err.message ? err.message : err));
++                        stage("autoload failed: " + (err && err.message ? err.message : err), "bad");
++                        try { window.parent.postMessage({ type: "wkal", kind: "autoload", ok: false, why: String(err && err.message || err) }, "*"); } catch (e) { }
++                    });
 +            }, 4000);
 +        }
      }
  }
  
 diff --git a/slopkit/poops.js b/slopkit/poops.js
-index ae366f1..e8cf018 100644
+index 5dda36f..7be2ac7 100644
 --- a/slopkit/poops.js
 +++ b/slopkit/poops.js
-@@ -7819,9 +7819,9 @@ export function makePoopsEngine(X) {
+@@ -7834,9 +7834,9 @@ export function makePoopsEngine(X) {
      flushMark("STAGE5-FETCH-BIN-OK", "bytes=" + binBytes.length);
  
      try {
 -      const name = o.elfName || "elfldr-ps5-1360.elf";
 -      flushMark("STAGE5-ELF-FETCH-PRE", "url=../payloads/" + name);
 -      const response = await fetch("../payloads/" + name, {
-+      const name = o.elfName || "elfldr-ps5.elf";
++      const name = "elfldr-ps5.elf";
 +      flushMark("STAGE5-ELF-FETCH-PRE", "url=../../shared/" + name);
 +      const response = await fetch("../../shared/" + name, {
          cache: "no-store",

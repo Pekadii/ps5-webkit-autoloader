@@ -173,7 +173,7 @@ def slopkit_iframe_url(app_dir):
         "?go=1&auto=1&production=1&trigger=netcontrol&attempts=8"
         "&only=ps0_preflight,ps1_prepare,ps3_stage0,ps4_validate"
         ",ps5_stage1,ps6_stage2,ps8_stage3,ps9_stage4,ps10_stage5"
-        "&log=debug&payload=1&autoload=payload.elf&v=final"
+        "&log=debug&payload=1&autoload=payload.elf&v=41"
     )
 
 
@@ -189,6 +189,7 @@ def umtx2_iframe_url(app_dir):
 # AppCache matches URLs exactly, so the manifest must list those query
 # variants too or the console falls back and the module imports fail.
 CACHEBUST_RE = re.compile(r'([A-Za-z0-9_./-]+\.(?:js|css|html|png|jpg|gif))\?v=[A-Za-z0-9]+')
+SLOPKIT_OFFSET_VERSION_RE = re.compile(r'\.\./offsets/\$\{window\.fw_str\}\.js\?v=([A-Za-z0-9]+)')
 
 
 def collect_cachebust_urls(files):
@@ -209,9 +210,18 @@ def collect_cachebust_urls(files):
             resolved = posixpath.normpath(posixpath.join(base, ref))
             if resolved.startswith("/") and "/slopkit/" in resolved:
                 urls.add(resolved + query)
+    offset_versions = {"final"}
+    for path, full in files:
+        if path.endswith("/slopkit/slopkit/main.js"):
+            try:
+                with open(full, "r", encoding="utf-8", errors="replace") as f:
+                    offset_versions.update(SLOPKIT_OFFSET_VERSION_RE.findall(f.read()))
+            except OSError:
+                pass
     for path, _ in files:
         if "/slopkit/offsets/" in path and path.endswith(".js"):
-            urls.add(path + "?v=final")
+            for version in offset_versions:
+                urls.add(path + "?v=" + version)
     return sorted(urls)
 
 
