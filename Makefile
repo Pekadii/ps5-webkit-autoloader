@@ -17,7 +17,7 @@ LIBS     := $(TARGET)/lib/libmicrohttpd.a \
 # Source Files
 SRCS := src/main.c src/http_server.c src/app_installer.c \
         src/notification.c src/ps5_launcher.c src/log.c src/inflate.c
-ELF := webkit-autoloader-installer_v0.2.2-b1.elf
+ELF := webkit-autoloader-installer_v0.3.0-b1.elf
 
 # Generated file registry
 FILE_REGISTRY_H := include/file_registry.h
