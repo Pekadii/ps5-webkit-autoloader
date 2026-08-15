@@ -636,9 +636,6 @@
        are already handled by the URL-diff branch in mirrorSlopkit() plus
        the shrink re-anchor (fresh documents start with an empty screen,
        so their lines stream normally). */
-<<<<<<< HEAD
-    setInterval(mirrorSlopkit, MIRROR_INTERVAL_MS);
-=======
     setInterval(mirrorExploit, 500);
 
     var picked = pickExploit();
@@ -661,29 +658,22 @@
         sessionStorage.removeItem('wkal_autoload');
       }
     } catch (e) { }
->>>>>>> upstream/main
 
     chainStarted = true;
-    if (picked === 'slopkit') {
-      clearSlopkitState();
-    }
+    clearSlopkitState();
     try {
       exploitEl.src = EXPLOIT_URL;
     } catch (e) { }
 
-<<<<<<< HEAD
     // Try to pick up initial logs immediately — slopkit can progress faster
     // than a 500ms poll, so call the mirror a few times shortly after arming.
-    try { mirrorSlopkit(); } catch (e) { }
-    setTimeout(function () { try { mirrorSlopkit(); } catch (e) { } }, 100);
-    setTimeout(function () { try { mirrorSlopkit(); } catch (e) { } }, 300);
+    try { mirrorExploit(); } catch (e) { }
+    setTimeout(function () { try { mirrorExploit(); } catch (e) { } }, 100);
+    setTimeout(function () { try { mirrorExploit(); } catch (e) { } }, 300);
 
     setTimeout(function () {
       revealExploit();
     }, 1500);
-=======
-    setTimeout(revealExploit, 1500);
->>>>>>> upstream/main
   }
 
   window.addEventListener('load', start);
