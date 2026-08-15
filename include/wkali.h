@@ -23,11 +23,13 @@
 #define ROUTE_INDEX "/"
 #define ROUTE_INDEX_HTML "/index.html"
 #define ROUTE_CACHE_MANIFEST "/cache.appcache"
-#define ROUTE_CACHE_COMPLETE "/cache_complete"
+#define ROUTE_INSTALL "/install"
 #define ROUTE_VERSION "/version"
 
 /* Logging (implementation in log.c) */
 void wkali_log(const char *fmt, ...);
+size_t wkali_wait_logs(size_t *pos, char *out_buf, size_t max_len);
+void wkali_log_wakeup(void);
 
 /* Notifications (declared in notification.h) */
 #include "notification.h"

@@ -3,10 +3,10 @@
 </p>
 <h1 align="center">PS5 WebKit Autoloader</h1>
 &nbsp;
-<p align="center">Automatically loads the WebKit exploit and your elf payloads.<br>Supports firmwares <b>9.00&ndash;12.00</b>.</p>
+<p align="center">Automatically loads the WebKit exploit and your elf payloads.<br>Supports firmwares <b>1.00&ndash;5.50</b> and <b>9.00&ndash;12.00</b>.</p>
 
 > [!NOTE]
-> Uses an early release of the [slopkit](https://github.com/jordyidk/slopkit) WebKit exploit under the hood with minimal changes (via a [patch file](https://github.com/itsPLK/ps5-webkit-autoloader/blob/main/tools/slopkit-autoload.patch)), so it should have the same stability as the original. Keep in mind that reliability can vary across firmwares, and it may not be suitable for everyday usage yet.
+> Uses the [umtx2](https://github.com/idlesauce/umtx2) (FW 1.00–5.50) and [slopkit](https://github.com/jordyidk/slopkit) (FW 9.00–12.00) WebKit exploits under the hood with minimal changes (via patch files in `patches/`), so stability should match the originals.
 
 <p align="center">
     <b>Other Autoloaders:</b><br>
@@ -33,7 +33,7 @@ There are two ways to set up the autoloader, depending on whether you're already
 
 1. Download `webkit-autoloader-installer_vX.Y.Z.elf` from the [Releases](https://github.com/Pekadii/ps5-webkit-autoloader/releases) page.
 2. Send it to your PS5 with `elfldr`, or launch it from Payload Manager.
-3. The installer creates the **WebKit Autoloader** app on the homescreen, opens the browser once to cache the autoloader page, and exits.
+3. The installer opens the browser once to cache the autoloader page, then creates the **WebKit Autoloader** app on the homescreen and exits.
 4. **Reboot once**, then launch **WebKit Autoloader** from the homescreen.
 
 ### Not jailbroken yet
@@ -84,6 +84,29 @@ The autoloader content is cached on the console, so updating is exactly the same
 The latest installer payload will re-create the homescreen app and refresh the cached page for you. Your payloads and `autoload.txt` on USB / internal storage are never touched.
 </Details>
 
+<Details>
+<Summary><i>How to use a custom ELF Loader?</i></Summary>
+
+On firmwares 9.00–12.00 (slopkit), the autoloader uses a custom version of **elfldr** that only accepts connections from the PS5 itself (localhost). This improves security by preventing unauthorized devices on your network from sending payloads to your console. On firmwares 1.00–5.50 (umtx2), the stock elfldr is booted.
+
+If you want to use a "normal" ELF Loader that allows sending payloads from any device, you can simply load it through **Payload Manager**.
+
+Alternatively, if you are using a manual config file (`autoload.txt`):
+1. Place your custom ELF Loader (e.g. `elfldr.elf`) in the `ps5_autoloader` directory.
+2. Add `elfldr.elf` to your `autoload.txt`.
+3. **Note**: If you are loading other payloads right after `elfldr.elf` in your `autoload.txt`, add a sleep command immediately after it (like `!4000` to sleep for 4 seconds) to give the new ELF Loader time to start up and listen before subsequent payloads are sent.
+
+Example `autoload.txt`:
+```text
+# Load custom ELF Loader
+elfldr.elf
+# Give it 4 seconds to start up (only needed if sending more payloads)
+!4000
+# Send other payloads
+etaHEN.elf
+```
+</Details>
+
 ---
 
 ## For developers
@@ -92,8 +115,9 @@ The technical internals and project architecture are documented in **[ARCHITECTU
 
 ## Credits
 
-* **[jordyidk](https://github.com/jordyidk)** & contributors — [slopkit](https://github.com/jordyidk/slopkit), the WebKit/kernel exploit chain used by this autoloader.
-* **[john-tornblom](https://github.com/john-tornblom)** — [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk/)
+* **[idlesauce](https://github.com/idlesauce)** & contributors — [umtx2](https://github.com/idlesauce/umtx2), the WebKit/kernel exploit chain used for firmware 1.00–5.50.
+* **[jordyidk](https://github.com/jordyidk)** & contributors — [slopkit](https://github.com/jordyidk/slopkit), the WebKit/kernel exploit chain used for firmware 9.00–12.00.
+* **[john-tornblom](https://github.com/john-tornblom)** — [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk/) and [elfldr](https://github.com/ps5-payload-dev/elfldr)
 * **[Mark Adler](https://github.com/madler)** — [puff.c](https://github.com/madler/zlib/tree/master/contrib/puff) (used to decompress embedded frontend files)
 * Everyone else contributing to the PS5 homebrew scene.
 

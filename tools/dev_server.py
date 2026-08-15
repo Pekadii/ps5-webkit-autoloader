@@ -69,6 +69,11 @@ def make_handler(base_dir, version, build_time):
             # so the dev page mirrors a real build.
             if rel.endswith((".html", ".htm")) or rel == "index.html":
                 data = data.replace(VERSION_TOKEN, version).replace(BUILD_TIME_TOKEN, build_time)
+            if rel == "app.js":
+                # Build-time exploit override (auto | umtx2 | slopkit), from the
+                # FORCE_EXPLOIT env — same token as the ELF/host builds.
+                mode = os.environ.get("FORCE_EXPLOIT", "auto")
+                data = data.replace(b"[[EXPLOIT_MODE]]", mode.encode("utf-8"))
             ctype = self.guess_type(full)
             self.send_response(200)
             self.send_header("Content-Type", ctype)

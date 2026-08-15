@@ -1,6 +1,7 @@
 /*
  * HTTP Server - serves the cached frontend files from the generated file
- * registry and handles the /cache_complete shutdown signal.
+ * registry and handles the /install route (installs the homescreen app once
+ * the cache is complete and shuts the server down).
  */
 
 #include <stdio.h>
@@ -13,15 +14,16 @@
 #include "http_server.h"
 #include "file_registry.h"
 #include "inflate.h"
+#include "app_installer.h"
 
 /* CORS is intentionally `*`: the installer page is also served from the PC
  * host (manuals.playstation.net over HTTPS), which cross-origin XHRs this
  * on-console server (http://127.0.0.1:18181) for /version and
- * /cache_complete. The server binds 127.0.0.1 only and lives for seconds.
+ * /install. The server binds 127.0.0.1 only and lives for seconds.
  * Do not restrict unless that flow changes. */
 #define CORS_ORIGIN "*"
 
-/* Shared flag — set to 0 by /cache_complete, read by the main loop.
+/* Shared flag — set to 0 by a successful /install, read by the main loop.
  * atomic so the store in a connection thread is visible to the main loop. */
 atomic_int http_keep_running = 1;
 
@@ -44,6 +46,12 @@ enum MHD_Result http_on_request(void *cls, struct MHD_Connection *conn,
     (void)version;
     (void)upload_data;
     (void)upload_data_size;
+    float fw = 0.0f;
+    const char *ua = MHD_lookup_connection_value(conn, MHD_HEADER_KIND, "User-Agent");
+    if (ua) {
+        const char *ps5 = strstr(ua, "PlayStation 5/");
+        if (ps5) fw = strtof(ps5 + 14, NULL);
+    }
 
     /* Handle CORS Preflight (OPTIONS) */
     if (strcmp(method, "OPTIONS") == 0) {
@@ -68,20 +76,56 @@ enum MHD_Result http_on_request(void *cls, struct MHD_Connection *conn,
     struct MHD_Response *resp = NULL;
     int http_status = MHD_HTTP_OK;
 
-    if (strcmp(url, ROUTE_CACHE_COMPLETE) == 0) {
-        wkali_log("[WKALI] Cache complete signal received. Shutting down...\n");
-        resp = MHD_create_response_from_buffer(strlen("OK"), (void *)"OK",
-                                               MHD_RESPMEM_PERSISTENT);
-        MHD_add_response_header(resp, "Content-Type", "text/plain");
-        atomic_store(&http_keep_running, 0);
+    if (strcmp(url, ROUTE_INSTALL) == 0) {
+        /* Called by the installer page once the AppCache is fully cached. The
+         * homescreen app is only installed/updated now — never on startup —
+         * so a shortcut is never created for a partial cache. On failure the
+         * server stays up and the page tells the user to re-run the installer. */
+        int err = wkali_install_app_if_needed();
+        if (err == 0) {
+            wkali_log("[WKALI] App installed. Stopping server...\n");
+            resp = MHD_create_response_from_buffer(strlen("OK"), (void *)"OK",
+                                                   MHD_RESPMEM_PERSISTENT);
+            MHD_add_response_header(resp, "Content-Type", "text/plain");
+            http_status = MHD_HTTP_OK;
+            atomic_store(&http_keep_running, 0);
+        } else {
+            wkali_log("[WKALI] App install failed (%d). Staying up.\n", err);
+            const char *fail = "Install failed";
+            resp = MHD_create_response_from_buffer(strlen(fail), (void *)fail,
+                                                   MHD_RESPMEM_PERSISTENT);
+            MHD_add_response_header(resp, "Content-Type", "text/plain");
+            http_status = MHD_HTTP_INTERNAL_SERVER_ERROR;
+        }
     } else if (strcmp(url, ROUTE_VERSION) == 0) {
         resp = MHD_create_response_from_buffer(strlen(WKAL_FULL_VERSION),
                                                (void *)WKAL_FULL_VERSION,
                                                MHD_RESPMEM_PERSISTENT);
         MHD_add_response_header(resp, "Content-Type", "text/plain");
+    } else if (strcmp(url, "/logs") == 0) {
+        const char *pos_str = MHD_lookup_connection_value(conn, MHD_GET_ARGUMENT_KIND, "pos");
+        size_t pos = 0;
+        if (pos_str) pos = (size_t)strtoull(pos_str, NULL, 10);
+
+        char *logs = malloc(16384 + 64);
+        if (logs) {
+            size_t copied = wkali_wait_logs(&pos, logs, 16384);
+            /* Append the new pos as an HTTP header so the client knows */
+            resp = MHD_create_response_from_buffer(copied, (void *)logs, MHD_RESPMEM_MUST_FREE);
+            char pos_hdr[64];
+            snprintf(pos_hdr, sizeof(pos_hdr), "%zu", pos);
+            MHD_add_response_header(resp, "X-Log-Pos", pos_hdr);
+            MHD_add_response_header(resp, "Content-Type", "text/plain");
+        } else {
+            const char *oom = "500 Internal Server Error\n";
+            resp = MHD_create_response_from_buffer(strlen(oom), (void *)oom, MHD_RESPMEM_PERSISTENT);
+        }
     } else {
         const FileEntry *entry = registry_lookup(url);
         if (entry) {
+            if (strcmp(url, "/") != 0 && strcmp(url, "/index.html") != 0 && strcmp(url, "/logs") != 0) {
+                wkali_log("[HTTP] Serving %s (size: %zu)\n", url, entry->size);
+            }
             void *payload = (void *)entry->data;
             size_t payload_size = entry->size;
             enum MHD_ResponseMemoryMode mem_mode = MHD_RESPMEM_PERSISTENT;
@@ -122,6 +166,61 @@ enum MHD_Result http_on_request(void *cls, struct MHD_Connection *conn,
                 payload = decompressed;
                 payload_size = destlen;
                 mem_mode = MHD_RESPMEM_MUST_FREE;
+            }
+
+            /* Dynamically strip incompatible exploit files from the cache manifest */
+            if (strcmp(url, ROUTE_CACHE_MANIFEST) == 0 && (fw > 0.0f || strcmp(WKALI_FORCE_EXPLOIT, "auto") != 0)) {
+                if (strcmp(WKALI_FORCE_EXPLOIT, "umtx2") == 0) {
+                    wkali_log("[WKALI] FORCE_EXPLOIT is set, caching umtx2 exploit\n");
+                } else if (strcmp(WKALI_FORCE_EXPLOIT, "slopkit") == 0) {
+                    wkali_log("[WKALI] FORCE_EXPLOIT is set, caching slopkit exploit\n");
+                } else {
+                    if (fw <= 5.50f) {
+                        wkali_log("[WKALI] Detected firmware %.2f <= 5.50, caching umtx2 exploit\n", fw);
+                    } else {
+                        wkali_log("[WKALI] Detected firmware %.2f > 5.50, caching slopkit exploit\n", fw);
+                    }
+                }
+
+                char *filtered = malloc(payload_size + 1);
+                if (filtered) {
+                    char *src = (char *)payload;
+                    char *dst = filtered;
+                    size_t remaining = payload_size;
+                    
+                    while (remaining > 0) {
+                        char *nl = memchr(src, '\n', remaining);
+                        size_t line_len = nl ? (size_t)(nl - src) + 1 : remaining;
+                        
+                        char line[1024];
+                        size_t copy_len = line_len < sizeof(line) ? line_len : sizeof(line) - 1;
+                        memcpy(line, src, copy_len);
+                        line[copy_len] = '\0';
+                        
+                        int keep = 1;
+                        if (strcmp(WKALI_FORCE_EXPLOIT, "umtx2") == 0) {
+                            if (strstr(line, "/slopkit/")) keep = 0;
+                        } else if (strcmp(WKALI_FORCE_EXPLOIT, "slopkit") == 0) {
+                            if (strstr(line, "/umtx2/")) keep = 0;
+                        } else {
+                            if (fw <= 5.50f && strstr(line, "/slopkit/")) keep = 0;
+                            if (fw > 5.50f && strstr(line, "/umtx2/")) keep = 0;
+                        }
+                        
+                        if (keep) {
+                            memcpy(dst, src, line_len);
+                            dst += line_len;
+                        }
+                        
+                        src += line_len;
+                        remaining -= line_len;
+                    }
+                    
+                    if (mem_mode == MHD_RESPMEM_MUST_FREE) free(payload);
+                    payload = filtered;
+                    payload_size = dst - filtered;
+                    mem_mode = MHD_RESPMEM_MUST_FREE;
+                }
             }
 
             resp = MHD_create_response_from_buffer(payload_size, payload,

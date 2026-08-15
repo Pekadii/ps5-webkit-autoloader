@@ -150,7 +150,7 @@ jobs:
 
           cat > release_body.md <<EOF
           > [!WARNING]
-          > This is a **pre-release / test build** from branch \`${{ inputs.branch }}\`. It is not intended for end users — expect bugs and changes.
+          > This is a **pre-release / test build** from branch \`${{ inputs.branch }}\`. It is intended for early testing and may contain bugs, experimental features, or unfinished changes.
 
           ## Downloads
 

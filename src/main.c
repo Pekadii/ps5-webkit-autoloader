@@ -1,10 +1,10 @@
 /*
  * WebKit Autoloader Installer - Main Entry Point
  *
- * This is a native PS5 ELF that installs a homescreen shortcut, starts a
- * temporary HTTP server, opens the browser to cache a page (or set of pages),
- * then exits. On subsequent launches from the homescreen, the cached content
- * loads offline.
+ * This is a native PS5 ELF that starts a temporary HTTP server, opens the
+ * browser to cache a page (or set of pages), installs the homescreen shortcut
+ * once the cache is complete (via the /install route), then exits. On
+ * subsequent launches from the homescreen, the cached content loads offline.
  *
  * This file handles: process init, signal setup, MHD lifecycle, shutdown.
  */
@@ -23,10 +23,6 @@
 #include "wkali.h"
 #include "http_server.h"
 #include "ps5_launcher.h"
-#include "app_installer.h"
-
-/* Defined in http_server.c — set to 0 by the /cache_complete route */
-extern atomic_int http_keep_running;
 
 static pid_t find_pid(const char *name) {
     int mib[4] = {1, 14, 8, 0};
@@ -110,18 +106,19 @@ int main(void) {
         wkali_log("[WKALI] sceUserServiceInitialize failed: 0x%08X\n", err);
     }
 
-    /* Install/update the homescreen app unconditionally */
-    wkali_install_app_if_needed();
-
-    /* Signal Resilience */
+    /* The homescreen app is installed/updated only AFTER the browser has
+     * finished caching (via the /install route), so a shortcut is never
+     * created for a partial cache. Nothing app-related happens at startup. */
     signal(SIGPIPE, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
 
-    /* Start the MHD daemon */
-    daemon = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION | MHD_USE_DEBUG,
+    /* Start the MHD daemon using a thread pool to handle concurrent AppCache requests. */
+    daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD | MHD_USE_DEBUG,
                               WKALI_PORT, NULL, NULL, &http_on_request,
-                              NULL, MHD_OPTION_END);
+                              NULL, 
+                              MHD_OPTION_THREAD_POOL_SIZE, (unsigned int)8,
+                              MHD_OPTION_END);
 
     if (NULL == daemon) {
         wkali_log("[WKALI] Failed to start HTTP daemon!\n");
@@ -138,13 +135,19 @@ int main(void) {
              "http://127.0.0.1:%d/?v=%s", WKALI_PORT, WKAL_FULL_VERSION);
     ps5_launch_browser(browser_url);
 
-    /* Main loop — runs until /cache_complete is hit by the browser */
+    /* Main loop — runs until /install succeeds (which also installs the
+     * homescreen app) and sets http_keep_running to 0 */
     while (atomic_load(&http_keep_running)) {
         usleep(100000); /* 100ms sleep */
     }
 
-    wkali_log("[WKALI] Shutting down...\n");
     wkali_notify("WebKit Autoloader v%s cached successfully!", WKAL_FULL_VERSION);
+    wkali_log_wakeup();
+
+    /* Give the /logs thread half a second to wake up and flush the final logs 
+     * over the network before we aggressively kill the MHD daemon and all sockets. */
+    usleep(500000); 
+
     if (daemon)
         MHD_stop_daemon(daemon);
 

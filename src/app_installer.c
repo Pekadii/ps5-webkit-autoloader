@@ -41,6 +41,29 @@ int sceAppInstUtilAppUnInstall(const char *);
  * it that way if WKAL_TITLE_ID is ever changed. */
 _Static_assert(sizeof(WKAL_TITLE_ID) <= 16, "WKAL_TITLE_ID too long for path buffers");
 
+static int mkdir_p(const char *path, mode_t mode) {
+  char tmp[256];
+  snprintf(tmp, sizeof(tmp), "%s", path);
+  size_t len = strlen(tmp);
+  if (len == 0)
+    return 0;
+  if (tmp[len - 1] == '/')
+    tmp[len - 1] = '\0';
+  for (char *p = tmp + 1; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+      if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+        return -1;
+      }
+      *p = '/';
+    }
+  }
+  if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+    return -1;
+  }
+  return 0;
+}
+
 static int install_file(const char *path, const uint8_t *data, size_t size) {
   FILE *f;
   if (!(f = fopen(path, "wb"))) {
@@ -144,18 +167,11 @@ int wkali_install_app_if_needed(void) {
     return -1;
   }
 
-  if (mkdir(base_dir, 0755) && errno != EEXIST) {
-    wkali_log("[WKALI] Failed to create app dir: %s (errno: %d)\n", base_dir,
-                   errno);
-    sceAppInstUtilTerminate();
-    return -1;
-  }
-
   char sce_sys_dir[256];
   snprintf(sce_sys_dir, sizeof(sce_sys_dir), "/user/app/%s/sce_sys", title_id);
-  if (mkdir(sce_sys_dir, 0755) && errno != EEXIST) {
-    wkali_log("[WKALI] Failed to create sce_sys dir: %s (errno: %d)\n",
-                   sce_sys_dir, errno);
+  if (mkdir_p(sce_sys_dir, 0755) != 0) {
+    wkali_log("[WKALI] Failed to create app dir: %s (errno: %d)\n",
+              sce_sys_dir, errno);
     sceAppInstUtilTerminate();
     return -1;
   }
