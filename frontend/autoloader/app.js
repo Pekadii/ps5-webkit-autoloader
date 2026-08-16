@@ -121,6 +121,7 @@
     };
     writeRecord(FAILURE_KEY, failure);
     removeRecord(ATTEMPT_KEY);
+    attemptRecord = null;
     return failure;
   }
 
