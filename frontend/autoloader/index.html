@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <title>WebKit Autoloader v0.3.0-b1 by PLK (built 2026-08-15 04:57:13 UTC)</title>
+  <title>WebKit Autoloader v0.3.0-b2 by PLK (built 2026-08-15 04:57:13 UTC)</title>
 </head>
 
 <body>
@@ -30,13 +30,24 @@
       </div>
     </div>
 
+    <section id="recoveryPanel" hidden role="alert" aria-live="assertive">
+      <div>
+        <h2 id="recoveryTitle">Recovery</h2>
+        <p id="recoveryDetails"></p>
+      </div>
+      <div class="recoveryActions">
+        <button id="retryButton" type="button" autofocus>Retry from start</button>
+        <button id="waitButton" type="button">Keep waiting</button>
+      </div>
+    </section>
+    
     <div id="progressContainer">
       <div id="progressBar"></div>
       <div id="progressLabel">Loading...</div>
     </div>
   </main>
 
-  <footer id="footer">WebKit Autoloader v0.3.0-b1 by PLK (built 2026-08-15 04:57:13 UTC)<br />This project is free and open source: github.com/itsPLK/ps5-webkit-autoloader</footer>
+  <footer id="footer">WebKit Autoloader v0.3.0-b2 by PLK (built 2026-08-15 04:57:13 UTC)<br />This project is free and open source: github.com/itsPLK/ps5-webkit-autoloader</footer>
 
   <script src="app.js"></script>
 </body>

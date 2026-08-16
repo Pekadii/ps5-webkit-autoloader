@@ -11,6 +11,13 @@ body {
 }
 
 body {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: column;
+  flex-direction: column;
   font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
   background: #0f172a;
   background: -webkit-linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
@@ -20,20 +27,18 @@ body {
 }
 
 #footer {
-  position: fixed;
-  bottom: 12px;
-  left: 50%;
-  -webkit-transform: translateX(-50%);
-  transform: translateX(-50%);
+  position: relative;
+  -webkit-box-flex: 0;
+  -webkit-flex: 0 0 auto;
+  flex: 0 0 auto;
+  width: 100%;
   font-size: 0.75rem;
   color: #4b5563;
   line-height: 1.5;
   text-align: center;
-  z-index: 9999;
-  /* subtle translucent backdrop to remain readable above the progress bar */
-  background: rgba(3, 7, 18, 0.6);
+  z-index: 1;
+  background: #0b1220;
   padding: 0.2rem 0.6rem;
-  border-radius: 6px;
 }
 
 
@@ -122,8 +127,12 @@ body {
 /* Loader UI: centered; the bottom-right iframe just floats over it */
 #loader {
   position: relative;
+  -webkit-box-flex: 1;
+  -webkit-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   z-index: 10;
-  height: 100%;
+  height: auto;
   display: -webkit-box;
   display: -webkit-flex;
   display: flex;
@@ -295,4 +304,71 @@ main[hidden] {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   z-index: 1;
   pointer-events: none;
+}
+
+/* Watchdog recovery controls */
+#recoveryPanel {
+  width: 82%;
+  max-width: 1220px;
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: justify;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #2a1608;
+  border: 1px solid #d97706;
+  border-radius: 10px;
+  color: #fde68a;
+}
+
+#recoveryPanel[hidden] {
+  display: none !important;
+}
+
+#recoveryPanel h2 {
+  margin-bottom: 0.3rem;
+  color: #fbbf24;
+  font-size: 1.1rem;
+}
+
+#recoveryPanel p {
+  line-height: 1.45;
+}
+
+.recoveryActions {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  gap: 0.75rem;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+}
+
+.recoveryActions button {
+  min-width: 10rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #475569;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 600;
+}
+
+.recoveryActions button:focus {
+  outline: 3px solid #38bdf8;
+  outline-offset: 3px;
+  border-color: #38bdf8;
+}
+
+#retryButton {
+  background: #b45309;
+  border-color: #f59e0b;
 }
