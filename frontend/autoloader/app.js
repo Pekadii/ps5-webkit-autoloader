@@ -28,7 +28,136 @@
   var lastFrameUrl = '';
   var repairCount = 0;
   var MIRROR_INTERVAL_MS = 150; // poll interval for mirroring slopkit logs
-  
+  var WATCHDOG_TIMEOUT_MS = 90000;
+  var ATTEMPT_KEY = 'wkal:active-attempt';
+  var FAILURE_KEY = 'wkal:last-failure';
+  var lastActivityAt = Date.now();
+  var currentStage = 'preflight';
+  var attemptRecord = null;
+  var recoveryPanel = document.getElementById('recoveryPanel');
+  var recoveryTitle = document.getElementById('recoveryTitle');
+  var recoveryDetails = document.getElementById('recoveryDetails');
+  var retryButton = document.getElementById('retryButton');
+  var waitButton = document.getElementById('waitButton');
+
+  function readRecord(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeRecord(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { }
+  }
+
+  function removeRecord(key) {
+    try { localStorage.removeItem(key); } catch (e) { }
+  }
+
+  function touchActivity(stage, detail) {
+    lastActivityAt = Date.now();
+    if (stage) currentStage = stage;
+    if (!attemptRecord) return;
+    attemptRecord.stage = currentStage;
+    attemptRecord.lastActivityAt = lastActivityAt;
+    if (detail) attemptRecord.detail = String(detail).slice(0, 240);
+    writeRecord(ATTEMPT_KEY, attemptRecord);
+  }
+
+  function beginAttempt() {
+    var previous = readRecord(ATTEMPT_KEY);
+    var failure = readRecord(FAILURE_KEY);
+    if (previous && previous.state === 'running') {
+      failure = {
+        state: 'interrupted',
+        reason: 'The previous run ended before reporting a result.',
+        stage: previous.stage || 'unknown',
+        firmware: previous.firmware || 'unknown',
+        exploit: previous.exploit || 'unknown',
+        startedAt: previous.startedAt || 0,
+        failedAt: Date.now()
+      };
+      writeRecord(FAILURE_KEY, failure);
+    }
+    attemptRecord = {
+      state: 'running',
+      stage: currentStage,
+      firmware: (detectFirmware() || {}).str || 'unknown',
+      exploit: exploitMode || 'detecting',
+      startedAt: Date.now(),
+      lastActivityAt: Date.now()
+    };
+    writeRecord(ATTEMPT_KEY, attemptRecord);
+    if (failure) {
+      uiLog('[previous] ' + (failure.reason || 'Run failed') +
+        ' (stage: ' + (failure.stage || 'unknown') +
+        ', firmware: ' + (failure.firmware || 'unknown') + ')', 'warning');
+    }
+  }
+
+  function completeAttempt() {
+    if (attemptRecord) {
+      attemptRecord.state = 'success';
+      attemptRecord.stage = 'finished';
+      attemptRecord.completedAt = Date.now();
+    }
+    removeRecord(ATTEMPT_KEY);
+    removeRecord(FAILURE_KEY);
+    if (recoveryPanel) recoveryPanel.hidden = true;
+  }
+
+  function recordFailure(reason, stage) {
+    var failure = {
+      state: 'failed',
+      reason: String(reason || 'Unknown failure').slice(0, 300),
+      stage: stage || currentStage || 'unknown',
+      firmware: (detectFirmware() || {}).str || 'unknown',
+      exploit: exploitMode || 'unknown',
+      startedAt: attemptRecord ? attemptRecord.startedAt : 0,
+      failedAt: Date.now()
+    };
+    writeRecord(FAILURE_KEY, failure);
+    removeRecord(ATTEMPT_KEY);
+    return failure;
+  }
+
+  function showRecovery(reason) {
+    var failure = recordFailure(reason, currentStage);
+    setStage(currentStage, 'error');
+    setStage('finished', 'error');
+    updateProgress(0, 'Exploit appears stalled.');
+    uiLog('[watchdog] ' + failure.reason + ' Last stage: ' + failure.stage + '.', 'error');
+    if (recoveryTitle) recoveryTitle.textContent = 'No progress detected';
+    if (recoveryDetails) {
+      recoveryDetails.textContent = failure.reason + ' Last stage: ' +
+        failure.stage + '. You can retry from the beginning or keep waiting.';
+    }
+    if (recoveryPanel) recoveryPanel.hidden = false;
+  }
+
+  function retryFromStart() {
+    recordFailure('Manual retry requested.', currentStage);
+    try { exploitEl.src = 'about:blank'; } catch (e) { }
+    try { window.location.reload(); } catch (e) { window.location.href = window.location.href; }
+  }
+
+  if (retryButton) retryButton.addEventListener('click', retryFromStart);
+  if (waitButton) waitButton.addEventListener('click', function () {
+    lastActivityAt = Date.now();
+    if (attemptRecord) {
+      attemptRecord.state = 'running';
+      writeRecord(ATTEMPT_KEY, attemptRecord);
+    } else {
+      beginAttempt();
+    }
+    if (recoveryPanel) recoveryPanel.hidden = true;
+    setStage(currentStage, 'active');
+    uiLog('[watchdog] Continuing to wait for progress.', 'warning');
+  });
+
   var STAGE_NAMES = [
     'Preflight',
     'Prepare',
@@ -89,6 +218,7 @@
 
   function uiLog(message, type) {
     type = type || 'info';
+    if (chainStarted && type !== 'warning') touchActivity(null, message);
     var entry = document.createElement('div');
     entry.className = 'line ' + type;
     entry.textContent = message;
@@ -127,6 +257,7 @@
     if (status === 'active') el.classList.add('active');
     if (status === 'success') el.classList.add('success');
     if (status === 'error') el.classList.add('error');
+    if (status === 'active' || status === 'success') touchActivity(key, status);
   }
 
   function updateProgress(percent, message) {
@@ -194,6 +325,7 @@
       updateProgress(100, 'Autoload finished.');
       setStage('autoload', 'success');
       setStage('finished', 'success');
+      completeAttempt();
 
       /* Payload is running as its own process now — unload the iframe to
          free the memory it held and avoid a browser OOM dialog.
@@ -207,6 +339,7 @@
       updateProgress(0, 'Autoload failed.');
       setStage('autoload', 'error');
       setStage('finished', 'error');
+      recordFailure(data.why || 'Autoload failed.', 'autoload');
     }
     setTimeout(function () {
       if (data.ok) {
@@ -645,6 +778,9 @@
     }
     exploitMode = picked;
     EXPLOIT_URL = picked === 'umtx2' ? UMTX2_URL : SLOPKIT_URL;
+    beginAttempt();
+    attemptRecord.exploit = exploitMode;
+    writeRecord(ATTEMPT_KEY, attemptRecord);
 
     /* umtx2 auto-runs its chain on load when sessionStorage 'on_load_autorun'
        is set (it clears it itself once main() starts); clear it on the
@@ -674,6 +810,14 @@
     setTimeout(function () {
       revealExploit();
     }, 1500);
+
+    setInterval(function () {
+      if (!chainStarted || finished || !attemptRecord) return;
+      if (Date.now() - lastActivityAt < WATCHDOG_TIMEOUT_MS) return;
+      showRecovery('No stage or log activity for ' +
+        Math.round(WATCHDOG_TIMEOUT_MS / 1000) + ' seconds.');
+      lastActivityAt = Date.now();
+    }, 5000);
   }
 
   window.addEventListener('load', start);
